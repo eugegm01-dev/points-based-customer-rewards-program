@@ -38,11 +38,11 @@ internal/
 - [x] Logging (zerolog with structured JSON + chi httplog)
 
 ### Phase 1: Auth & Users (Days 2–3)
-- [ ] DB migrations (golang-migrate or goose)
-- [ ] User model, repository
-- [ ] JWT middleware (or session cookies)
-- [ ] POST /register, POST /login
-- [ ] Password hashing: bcrypt
+- [x] DB migrations (goose + pgx)
+- [x] User model, repository
+- [x] JWT in HttpOnly cookie + auth middleware (optional Bearer)
+- [x] POST /register, POST /login
+- [x] Password hashing: bcrypt
 
 ### Phase 2: Orders & Balance (Days 4–5)
 - [ ] Orders model, repository

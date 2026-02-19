@@ -27,12 +27,17 @@ type Config struct {
 	// AccrualAddress is the base URL of the accrual system API.
 	// Set via -r flag or ACCRUAL_SYSTEM_ADDRESS env.
 	AccrualAddress string
+
+	// AuthSecret is the secret key for signing JWT (e.g. auth cookie).
+	// Set via -s flag or AUTH_SECRET env. Required for auth.
+	AuthSecret string
 }
 
 const (
 	envRunAddress     = "RUN_ADDRESS"
 	envDatabaseURI    = "DATABASE_URI"
 	envAccrualAddress = "ACCRUAL_SYSTEM_ADDRESS"
+	envAuthSecret     = "AUTH_SECRET"
 
 	defaultRunAddress = ":8080"
 )
@@ -43,6 +48,7 @@ func Load() (*Config, error) {
 	runAddr := flag.String("a", "", "Server address and port (e.g. :8080). Overrides RUN_ADDRESS.")
 	dbURI := flag.String("d", "", "PostgreSQL connection URI. Overrides DATABASE_URI.")
 	accrualAddr := flag.String("r", "", "Accrual system base URL. Overrides ACCRUAL_SYSTEM_ADDRESS.")
+	authSecret := flag.String("s", "", "Secret for JWT signing. Overrides AUTH_SECRET.")
 
 	flag.Parse()
 
@@ -50,6 +56,7 @@ func Load() (*Config, error) {
 		RunAddress:     firstNonEmpty(*runAddr, os.Getenv(envRunAddress), defaultRunAddress),
 		DatabaseURI:    firstNonEmpty(*dbURI, os.Getenv(envDatabaseURI)),
 		AccrualAddress: firstNonEmpty(*accrualAddr, os.Getenv(envAccrualAddress)),
+		AuthSecret:     firstNonEmpty(*authSecret, os.Getenv(envAuthSecret)),
 	}
 
 	if err := cfg.validate(); err != nil {
@@ -67,6 +74,9 @@ func (c *Config) validate() error {
 	}
 	if strings.TrimSpace(c.AccrualAddress) == "" {
 		missing = append(missing, fmt.Sprintf("accrual address (flag -r or %s)", envAccrualAddress))
+	}
+	if strings.TrimSpace(c.AuthSecret) == "" {
+		missing = append(missing, fmt.Sprintf("auth secret (flag -s or %s)", envAuthSecret))
 	}
 	if len(missing) > 0 {
 		return fmt.Errorf("%w: %s", ErrMissingConfig, strings.Join(missing, ", "))

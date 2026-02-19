@@ -2,15 +2,20 @@ package main
 
 import (
 	"context"
+	"database/sql"
 	"net/http"
 	"os"
 	"os/signal"
 	"syscall"
 	"time"
 
+	_ "github.com/jackc/pgx/v5/stdlib"
 	"github.com/eugegm01-dev/points-based-customer-rewards-program.git/internal/config"
 	"github.com/eugegm01-dev/points-based-customer-rewards-program.git/internal/logger"
+	"github.com/eugegm01-dev/points-based-customer-rewards-program.git/internal/migrate"
+	"github.com/eugegm01-dev/points-based-customer-rewards-program.git/internal/repository/postgres"
 	"github.com/eugegm01-dev/points-based-customer-rewards-program.git/internal/server"
+	"github.com/eugegm01-dev/points-based-customer-rewards-program.git/internal/service"
 )
 
 const shutdownTimeout = 10 * time.Second
@@ -23,9 +28,28 @@ func main() {
 		log.Fatal().Err(err).Msg("load config")
 	}
 
+	db, err := sql.Open("pgx", cfg.DatabaseURI)
+	if err != nil {
+		log.Fatal().Err(err).Msg("open database")
+	}
+	defer db.Close()
+
+	if err := migrate.Up(db); err != nil {
+		log.Fatal().Err(err).Msg("migrate")
+	}
+	log.Info().Msg("migrations applied")
+
+	userRepo := postgres.NewUserRepository(db)
+	authService := service.NewAuthService(userRepo)
+	deps := &server.Dependencies{
+		UserRepo:    userRepo,
+		AuthService: authService,
+		AuthSecret:  cfg.AuthSecret,
+	}
+
 	srv := &http.Server{
 		Addr:    cfg.RunAddress,
-		Handler: server.NewRouter(log),
+		Handler: server.NewRouter(log, deps),
 	}
 
 	go func() {
@@ -46,6 +70,5 @@ func main() {
 	if err := srv.Shutdown(ctx); err != nil {
 		log.Error().Err(err).Msg("server shutdown")
 	}
-	// TODO: close DB when added
 	log.Info().Msg("shutdown complete")
 }
