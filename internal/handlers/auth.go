@@ -1,4 +1,3 @@
-// Package handlers provides HTTP handlers.
 package handlers
 
 import (
@@ -10,12 +9,14 @@ import (
 	"github.com/eugegm01-dev/points-based-customer-rewards-program.git/internal/domain"
 	"github.com/eugegm01-dev/points-based-customer-rewards-program.git/internal/middleware"
 	"github.com/eugegm01-dev/points-based-customer-rewards-program.git/internal/service"
+	"github.com/rs/zerolog"
 )
 
 // AuthHandler holds dependencies for auth endpoints.
 type AuthHandler struct {
 	AuthService *service.AuthService
 	AuthSecret  string
+	Logger      zerolog.Logger
 }
 
 // RegisterRequest is the JSON body for POST /api/user/register and /api/user/login.
@@ -42,12 +43,14 @@ func (h *AuthHandler) Register(w http.ResponseWriter, r *http.Request) {
 			http.Error(w, "login already taken", http.StatusConflict)
 			return
 		}
+		h.Logger.Error().Err(err).Msg("register failed")
 		http.Error(w, "internal error", http.StatusInternalServerError)
 		return
 	}
 
 	token, err := auth.CreateToken(h.AuthSecret, u.ID, u.Login)
 	if err != nil {
+		h.Logger.Error().Err(err).Msg("failed to create token")
 		http.Error(w, "internal error", http.StatusInternalServerError)
 		return
 	}
@@ -74,12 +77,14 @@ func (h *AuthHandler) Login(w http.ResponseWriter, r *http.Request) {
 			http.Error(w, "invalid login or password", http.StatusUnauthorized)
 			return
 		}
+		h.Logger.Error().Err(err).Msg("login failed")
 		http.Error(w, "internal error", http.StatusInternalServerError)
 		return
 	}
 
 	token, err := auth.CreateToken(h.AuthSecret, u.ID, u.Login)
 	if err != nil {
+		h.Logger.Error().Err(err).Msg("failed to create token")
 		http.Error(w, "internal error", http.StatusInternalServerError)
 		return
 	}
