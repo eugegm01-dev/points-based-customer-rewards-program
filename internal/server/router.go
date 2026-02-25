@@ -4,13 +4,13 @@ package server
 import (
 	"net/http"
 
-	"github.com/go-chi/chi/v5"
-	chimw "github.com/go-chi/chi/v5/middleware"
-	"github.com/go-chi/httplog"
 	"github.com/eugegm01-dev/points-based-customer-rewards-program.git/internal/domain"
 	"github.com/eugegm01-dev/points-based-customer-rewards-program.git/internal/handlers"
 	"github.com/eugegm01-dev/points-based-customer-rewards-program.git/internal/middleware"
 	"github.com/eugegm01-dev/points-based-customer-rewards-program.git/internal/service"
+	"github.com/go-chi/chi/v5"
+	chimw "github.com/go-chi/chi/v5/middleware"
+	"github.com/go-chi/httplog"
 	"github.com/rs/zerolog"
 )
 
@@ -35,6 +35,7 @@ func NewRouter(log zerolog.Logger, deps *Dependencies) http.Handler {
 	authHandler := &handlers.AuthHandler{
 		AuthService: deps.AuthService,
 		AuthSecret:  deps.AuthSecret,
+		Logger:      log.With().Str("component", "auth").Logger(),
 	}
 	r.Post("/api/user/register", authHandler.Register)
 	r.Post("/api/user/login", authHandler.Login)
