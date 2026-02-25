@@ -9,13 +9,13 @@ import (
 	"syscall"
 	"time"
 
-	_ "github.com/jackc/pgx/v5/stdlib"
 	"github.com/eugegm01-dev/points-based-customer-rewards-program.git/internal/config"
 	"github.com/eugegm01-dev/points-based-customer-rewards-program.git/internal/logger"
 	"github.com/eugegm01-dev/points-based-customer-rewards-program.git/internal/migrate"
 	"github.com/eugegm01-dev/points-based-customer-rewards-program.git/internal/repository/postgres"
 	"github.com/eugegm01-dev/points-based-customer-rewards-program.git/internal/server"
 	"github.com/eugegm01-dev/points-based-customer-rewards-program.git/internal/service"
+	_ "github.com/jackc/pgx/v5/stdlib"
 )
 
 const shutdownTimeout = 10 * time.Second
@@ -40,13 +40,15 @@ func main() {
 	log.Info().Msg("migrations applied")
 
 	userRepo := postgres.NewUserRepository(db)
+	orderRepo := postgres.NewOrderRepository(db)
+
 	authService := service.NewAuthService(userRepo)
 	deps := &server.Dependencies{
 		UserRepo:    userRepo,
+		OrderRepo:   orderRepo, // ADD THIS
 		AuthService: authService,
 		AuthSecret:  cfg.AuthSecret,
 	}
-
 	srv := &http.Server{
 		Addr:    cfg.RunAddress,
 		Handler: server.NewRouter(log, deps),

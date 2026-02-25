@@ -17,6 +17,7 @@ import (
 // Dependencies holds services and repositories required by handlers.
 type Dependencies struct {
 	UserRepo    domain.UserRepository
+	OrderRepo   domain.OrderRepository // ADD THIS
 	AuthService *service.AuthService
 	AuthSecret  string
 }
