@@ -6,7 +6,7 @@ import (
 	"errors"
 	"io"
 	"net/http"
-	"strings" // ✅ CORRECT PACKAGE FOR TrimSpace
+	"strings"
 	"time"
 
 	"github.com/eugegm01-dev/points-based-customer-rewards-program.git/internal/middleware"
@@ -28,7 +28,6 @@ func (h *OrderHandler) UploadOrder(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// ✅ SAFE body reading with io.ReadAll
 	body, err := io.ReadAll(r.Body)
 	if err != nil {
 		h.Logger.Warn().Err(err).Msg("failed to read request body")
@@ -40,7 +39,6 @@ func (h *OrderHandler) UploadOrder(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// ✅ CORRECT TrimSpace usage from strings package
 	number := strings.TrimSpace(string(body))
 	if number == "" {
 		http.Error(w, "bad request", http.StatusBadRequest)
@@ -111,25 +109,4 @@ func (h *OrderHandler) GetOrders(w http.ResponseWriter, r *http.Request) {
 	if err := json.NewEncoder(w).Encode(responses); err != nil {
 		h.Logger.Warn().Err(err).Msg("failed to encode response")
 	}
-}
-
-// BalanceResponse is the JSON response for GET /api/user/balance.
-type BalanceResponse struct {
-	Current   float64 `json:"current"`
-	Withdrawn float64 `json:"withdrawn"`
-}
-
-// GetBalance handles GET /api/user/balance.
-func (h *OrderHandler) GetBalance(w http.ResponseWriter, r *http.Request) {
-	userID := middleware.GetUserID(r.Context())
-	if userID == "" {
-		http.Error(w, "unauthorized", http.StatusUnauthorized)
-		return
-	}
-
-	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(BalanceResponse{
-		Current:   0.0,
-		Withdrawn: 0.0,
-	})
 }

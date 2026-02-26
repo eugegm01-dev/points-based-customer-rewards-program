@@ -22,7 +22,6 @@ const shutdownTimeout = 10 * time.Second
 
 func main() {
 	log := logger.New()
-
 	cfg, err := config.Load()
 	if err != nil {
 		log.Fatal().Err(err).Msg("load config")
@@ -39,16 +38,22 @@ func main() {
 	}
 	log.Info().Msg("migrations applied")
 
+	// ✅ CREATE ALL REPOSITORIES HERE (NOT in router!)
 	userRepo := postgres.NewUserRepository(db)
 	orderRepo := postgres.NewOrderRepository(db)
+	balanceRepo := postgres.NewBalanceRepository(db) // ✅ ADDED
 
-	authService := service.NewAuthService(userRepo)
+	// ✅ CREATE authService BEFORE Dependencies
+	authService := service.NewAuthService(userRepo) // ✅ FIXED: was missing!
+
 	deps := &server.Dependencies{
 		UserRepo:    userRepo,
-		OrderRepo:   orderRepo, // ADD THIS
-		AuthService: authService,
+		OrderRepo:   orderRepo,
+		BalanceRepo: balanceRepo, // ✅ ADDED
+		AuthService: authService, // ✅ FIXED: was missing!
 		AuthSecret:  cfg.AuthSecret,
 	}
+
 	srv := &http.Server{
 		Addr:    cfg.RunAddress,
 		Handler: server.NewRouter(log, deps),
@@ -68,7 +73,6 @@ func main() {
 	log.Info().Msg("shutting down...")
 	ctx, cancel := context.WithTimeout(context.Background(), shutdownTimeout)
 	defer cancel()
-
 	if err := srv.Shutdown(ctx); err != nil {
 		log.Error().Err(err).Msg("server shutdown")
 	}

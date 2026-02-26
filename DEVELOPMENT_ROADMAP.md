@@ -45,9 +45,9 @@ internal/
 - [x] Password hashing: bcrypt
 
 ### Phase 2: Orders & Balance (Days 4–5)
-- [ ] Orders model, repository
-- [ ] Balance/withdrawals tables
-- [ ] POST /orders (with Luhn validation)
+- [x] Orders model, repository
+- [x] Balance/withdrawals tables
+- [x] POST /orders (with Luhn validation)
 - [ ] GET /orders, GET /balance
 - [ ] Auth middleware on protected routes
 
