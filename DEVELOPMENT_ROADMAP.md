@@ -58,9 +58,9 @@ internal/
 - [x] Use context for cancellation
 
 ### Phase 4: Withdrawals (Day 8)
-- [ ] POST /balance/withdraw
-- [ ] GET /withdrawals
-- [ ] Atomic balance update (transaction)
+- [x] POST /balance/withdraw
+- [x] GET /withdrawals
+- [x] Atomic balance update (transaction)
 
 ### Phase 5: Polish (Days 9–10)
 - [ ] gzip middleware for responses
