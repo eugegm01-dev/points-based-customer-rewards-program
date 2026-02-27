@@ -54,8 +54,8 @@ internal/
 ### Phase 3: Accrual Integration (Days 6–7)
 - [x] Accrual HTTP client with retries/backoff
 - [x] Background worker: poll accrual for PROCESSING orders
-- [ ] Update order status, credit balance
-- [ ] Use context for cancellation
+- [x] Update order status, credit balance
+- [x] Use context for cancellation
 
 ### Phase 4: Withdrawals (Day 8)
 - [ ] POST /balance/withdraw
