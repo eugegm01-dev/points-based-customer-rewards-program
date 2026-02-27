@@ -21,6 +21,40 @@ func NewOrderRepository(db *sql.DB) *OrderRepository {
 	return &OrderRepository{db: db}
 }
 
+// GetNewOrders fetches orders with NEW status for background worker.
+func (r *OrderRepository) GetNewOrders(ctx context.Context) ([]*domain.Order, error) {
+	rows, err := r.db.QueryContext(ctx,
+		`SELECT id, user_id, number, status, accrual, uploaded_at, processed_at
+		FROM orders
+		WHERE status = $1`,
+		domain.OrderStatusNew,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var orders []*domain.Order
+	for rows.Next() {
+		order := &domain.Order{}
+		if err := rows.Scan(
+			&order.ID,
+			&order.UserID,
+			&order.Number,
+			&order.Status,
+			&order.Accrual,
+			&order.UploadedAt,
+			&order.ProcessedAt,
+		); err != nil {
+			return nil, err
+		}
+		orders = append(orders, order)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return orders, nil
+}
+
 // Create inserts a new order and sets order.ID. Returns domain.ErrDuplicateOrder if number exists.
 func (r *OrderRepository) Create(ctx context.Context, order *domain.Order) error {
 	err := r.db.QueryRowContext(ctx,

@@ -9,6 +9,7 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/eugegm01-dev/points-based-customer-rewards-program.git/internal/accrual"
 	"github.com/eugegm01-dev/points-based-customer-rewards-program.git/internal/config"
 	"github.com/eugegm01-dev/points-based-customer-rewards-program.git/internal/logger"
 	"github.com/eugegm01-dev/points-based-customer-rewards-program.git/internal/migrate"
@@ -38,19 +39,25 @@ func main() {
 	}
 	log.Info().Msg("migrations applied")
 
-	// ✅ CREATE ALL REPOSITORIES HERE (NOT in router!)
+	// ✅ CREATE ALL REPOSITORIES HERE
 	userRepo := postgres.NewUserRepository(db)
 	orderRepo := postgres.NewOrderRepository(db)
-	balanceRepo := postgres.NewBalanceRepository(db) // ✅ ADDED
+	balanceRepo := postgres.NewBalanceRepository(db)
 
-	// ✅ CREATE authService BEFORE Dependencies
-	authService := service.NewAuthService(userRepo) // ✅ FIXED: was missing!
+	// ✅ CREATE SERVICES
+	authService := service.NewAuthService(userRepo)
+	orderService := service.NewOrderService(orderRepo)
+	balanceService := service.NewBalanceService(balanceRepo, orderRepo)
+
+	// ✅ CREATE ACCRUAL CLIENT & WORKER
+	accrualClient := accrual.NewClient(cfg.AccrualAddress)
+	accrualWorker := service.NewAccrualWorker(orderService, balanceService, accrualClient, log, 10*time.Second)
 
 	deps := &server.Dependencies{
 		UserRepo:    userRepo,
 		OrderRepo:   orderRepo,
-		BalanceRepo: balanceRepo, // ✅ ADDED
-		AuthService: authService, // ✅ FIXED: was missing!
+		BalanceRepo: balanceRepo,
+		AuthService: authService,
 		AuthSecret:  cfg.AuthSecret,
 	}
 
@@ -58,6 +65,10 @@ func main() {
 		Addr:    cfg.RunAddress,
 		Handler: server.NewRouter(log, deps),
 	}
+
+	// ✅ START WORKER
+	ctx, cancel := context.WithCancel(context.Background())
+	go accrualWorker.Run(ctx)
 
 	go func() {
 		log.Info().Str("addr", cfg.RunAddress).Msg("server starting")
@@ -71,9 +82,14 @@ func main() {
 	<-sigChan
 
 	log.Info().Msg("shutting down...")
-	ctx, cancel := context.WithTimeout(context.Background(), shutdownTimeout)
-	defer cancel()
-	if err := srv.Shutdown(ctx); err != nil {
+
+	// ✅ STOP WORKER
+	cancel()
+
+	ctxShutdown, cancelShutdown := context.WithTimeout(context.Background(), shutdownTimeout)
+	defer cancelShutdown()
+
+	if err := srv.Shutdown(ctxShutdown); err != nil {
 		log.Error().Err(err).Msg("server shutdown")
 	}
 	log.Info().Msg("shutdown complete")

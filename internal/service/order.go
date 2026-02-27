@@ -69,6 +69,11 @@ func (s *OrderService) GetProcessingOrders(ctx context.Context) ([]*domain.Order
 	return s.orderRepo.GetProcessingOrders(ctx) // ✅ NO userID PARAMETER
 }
 
+// GetNewOrders returns ALL orders with NEW status (for background worker).
+func (s *OrderService) GetNewOrders(ctx context.Context) ([]*domain.Order, error) {
+	return s.orderRepo.GetNewOrders(ctx)
+}
+
 // Sentinel errors for order operations.
 var (
 	ErrInvalidOrderNumber        = errors.New("invalid order number format")

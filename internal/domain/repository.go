@@ -27,6 +27,8 @@ type OrderRepository interface {
 	UpdateStatus(ctx context.Context, orderID int64, status OrderStatus, accrual *float64) error
 	// GetProcessingOrders fetches orders with PROCESSING status for background worker.
 	GetProcessingOrders(ctx context.Context) ([]*Order, error)
+	// GetNewOrders fetches orders with NEW status for background worker.
+	GetNewOrders(ctx context.Context) ([]*Order, error)
 }
 
 // Sentinel errors for repository operations.

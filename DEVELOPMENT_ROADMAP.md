@@ -48,12 +48,12 @@ internal/
 - [x] Orders model, repository
 - [x] Balance/withdrawals tables
 - [x] POST /orders (with Luhn validation)
-- [ ] GET /orders, GET /balance
-- [ ] Auth middleware on protected routes
+- [x] GET /orders, GET /balance
+- [x] Auth middleware on protected routes
 
 ### Phase 3: Accrual Integration (Days 6–7)
-- [ ] Accrual HTTP client with retries/backoff
-- [ ] Background worker: poll accrual for PROCESSING orders
+- [x] Accrual HTTP client with retries/backoff
+- [x] Background worker: poll accrual for PROCESSING orders
 - [ ] Update order status, credit balance
 - [ ] Use context for cancellation
 
