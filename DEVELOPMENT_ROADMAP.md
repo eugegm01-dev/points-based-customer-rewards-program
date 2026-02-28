@@ -63,11 +63,11 @@ internal/
 - [x] Atomic balance update (transaction)
 
 ### Phase 5: Polish (Days 9–10)
-- [ ] gzip middleware for responses
+- [x] gzip middleware for responses
 - [ ] Validation (go-playground/validator)
-- [ ] Error handling: consistent API errors
+- [x] Error handling: consistent API errors
 - [ ] Integration tests
-- [ ] Dockerfile + docker-compose for local dev
+- [x] Dockerfile + docker-compose for local dev
 
 ---
 

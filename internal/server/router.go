@@ -29,7 +29,7 @@ func NewRouter(log zerolog.Logger, deps *Dependencies) http.Handler {
 	r.Use(chimw.Recoverer)
 	r.Use(chimw.RequestID)
 	r.Use(httplog.RequestLogger(log))
-	r.Use(middleware.Gzip) // ✅ ADD GZIP MIDDLEWARE
+	r.Use(middleware.Gzip) // GZIP MIDDLEWARE
 
 	r.Get("/health", handlers.Health)
 
