@@ -24,27 +24,24 @@ type OrderHandler struct {
 func (h *OrderHandler) UploadOrder(w http.ResponseWriter, r *http.Request) {
 	userID := middleware.GetUserID(r.Context())
 	if userID == "" {
-		http.Error(w, "unauthorized", http.StatusUnauthorized)
+		WriteError(w, http.StatusUnauthorized, ErrUnauthorized)
 		return
 	}
-
 	body, err := io.ReadAll(r.Body)
 	if err != nil {
 		h.Logger.Warn().Err(err).Msg("failed to read request body")
-		http.Error(w, "bad request", http.StatusBadRequest)
+		WriteError(w, http.StatusBadRequest, ErrBadRequest)
 		return
 	}
 	if len(body) == 0 {
-		http.Error(w, "bad request", http.StatusBadRequest)
+		WriteError(w, http.StatusBadRequest, ErrBadRequest)
 		return
 	}
-
 	number := strings.TrimSpace(string(body))
 	if number == "" {
-		http.Error(w, "bad request", http.StatusBadRequest)
+		WriteError(w, http.StatusBadRequest, ErrBadRequest)
 		return
 	}
-
 	err = h.OrderService.UploadOrder(r.Context(), userID, number)
 	if err != nil {
 		switch {
@@ -52,18 +49,17 @@ func (h *OrderHandler) UploadOrder(w http.ResponseWriter, r *http.Request) {
 			w.WriteHeader(http.StatusOK)
 			return
 		case errors.Is(err, service.ErrOrderBelongsToAnotherUser):
-			http.Error(w, "order already uploaded by another user", http.StatusConflict)
+			WriteError(w, http.StatusConflict, ErrOrderAlreadyExists)
 			return
 		case errors.Is(err, service.ErrInvalidOrderNumber):
-			http.Error(w, "invalid order number format", http.StatusUnprocessableEntity)
+			WriteError(w, http.StatusUnprocessableEntity, ErrInvalidOrderNumber)
 			return
 		default:
 			h.Logger.Error().Err(err).Str("user_id", userID).Str("order", number).Msg("upload order failed")
-			http.Error(w, "internal error", http.StatusInternalServerError)
+			WriteError(w, http.StatusInternalServerError, ErrInternalServer)
 			return
 		}
 	}
-
 	w.WriteHeader(http.StatusAccepted)
 }
 

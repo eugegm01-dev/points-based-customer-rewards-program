@@ -8,6 +8,7 @@ import (
 	"github.com/eugegm01-dev/points-based-customer-rewards-program.git/internal/handlers"
 	"github.com/eugegm01-dev/points-based-customer-rewards-program.git/internal/middleware"
 	"github.com/eugegm01-dev/points-based-customer-rewards-program.git/internal/service"
+
 	"github.com/go-chi/chi/v5"
 	chimw "github.com/go-chi/chi/v5/middleware"
 	"github.com/go-chi/httplog"
@@ -28,6 +29,7 @@ func NewRouter(log zerolog.Logger, deps *Dependencies) http.Handler {
 	r.Use(chimw.Recoverer)
 	r.Use(chimw.RequestID)
 	r.Use(httplog.RequestLogger(log))
+	r.Use(middleware.Gzip) // ✅ ADD GZIP MIDDLEWARE
 
 	r.Get("/health", handlers.Health)
 

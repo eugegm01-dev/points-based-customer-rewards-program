@@ -29,32 +29,29 @@ type RegisterRequest struct {
 func (h *AuthHandler) Register(w http.ResponseWriter, r *http.Request) {
 	var req RegisterRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		http.Error(w, "bad request", http.StatusBadRequest)
+		WriteError(w, http.StatusBadRequest, ErrBadRequest)
 		return
 	}
 	if req.Login == "" || req.Password == "" {
-		http.Error(w, "bad request", http.StatusBadRequest)
+		WriteError(w, http.StatusBadRequest, ErrBadRequest)
 		return
 	}
-
 	u, err := h.AuthService.Register(r.Context(), req.Login, req.Password)
 	if err != nil {
 		if errors.Is(err, domain.ErrDuplicateLogin) {
-			http.Error(w, "login already taken", http.StatusConflict)
+			WriteError(w, http.StatusConflict, ErrLoginAlreadyTaken)
 			return
 		}
 		h.Logger.Error().Err(err).Msg("register failed")
-		http.Error(w, "internal error", http.StatusInternalServerError)
+		WriteError(w, http.StatusInternalServerError, ErrInternalServer)
 		return
 	}
-
 	token, err := auth.CreateToken(h.AuthSecret, u.ID, u.Login)
 	if err != nil {
 		h.Logger.Error().Err(err).Msg("failed to create token")
-		http.Error(w, "internal error", http.StatusInternalServerError)
+		WriteError(w, http.StatusInternalServerError, ErrInternalServer)
 		return
 	}
-
 	setAuthCookie(w, token)
 	w.WriteHeader(http.StatusOK)
 }
@@ -63,32 +60,29 @@ func (h *AuthHandler) Register(w http.ResponseWriter, r *http.Request) {
 func (h *AuthHandler) Login(w http.ResponseWriter, r *http.Request) {
 	var req RegisterRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		http.Error(w, "bad request", http.StatusBadRequest)
+		WriteError(w, http.StatusBadRequest, ErrBadRequest)
 		return
 	}
 	if req.Login == "" || req.Password == "" {
-		http.Error(w, "bad request", http.StatusBadRequest)
+		WriteError(w, http.StatusBadRequest, ErrBadRequest)
 		return
 	}
-
 	u, err := h.AuthService.Login(r.Context(), req.Login, req.Password)
 	if err != nil {
 		if errors.Is(err, service.ErrInvalidCredentials) {
-			http.Error(w, "invalid login or password", http.StatusUnauthorized)
+			WriteError(w, http.StatusUnauthorized, ErrInvalidCredentials)
 			return
 		}
 		h.Logger.Error().Err(err).Msg("login failed")
-		http.Error(w, "internal error", http.StatusInternalServerError)
+		WriteError(w, http.StatusInternalServerError, ErrInternalServer)
 		return
 	}
-
 	token, err := auth.CreateToken(h.AuthSecret, u.ID, u.Login)
 	if err != nil {
 		h.Logger.Error().Err(err).Msg("failed to create token")
-		http.Error(w, "internal error", http.StatusInternalServerError)
+		WriteError(w, http.StatusInternalServerError, ErrInternalServer)
 		return
 	}
-
 	setAuthCookie(w, token)
 	w.WriteHeader(http.StatusOK)
 }

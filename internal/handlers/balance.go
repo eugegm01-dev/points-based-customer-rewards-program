@@ -26,17 +26,15 @@ type BalanceResponse struct {
 func (h *BalanceHandler) GetBalance(w http.ResponseWriter, r *http.Request) {
 	userID := middleware.GetUserID(r.Context())
 	if userID == "" {
-		http.Error(w, "unauthorized", http.StatusUnauthorized)
+		WriteError(w, http.StatusUnauthorized, ErrUnauthorized)
 		return
 	}
-
 	balance, err := h.BalanceService.GetBalance(r.Context(), userID)
 	if err != nil {
 		h.Logger.Error().Err(err).Str("user_id", userID).Msg("get balance failed")
-		http.Error(w, "internal error", http.StatusInternalServerError)
+		WriteError(w, http.StatusInternalServerError, ErrInternalServer)
 		return
 	}
-
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(BalanceResponse{
 		Current:   balance.Current,
@@ -52,32 +50,30 @@ type WithdrawRequest struct {
 func (h *BalanceHandler) Withdraw(w http.ResponseWriter, r *http.Request) {
 	userID := middleware.GetUserID(r.Context())
 	if userID == "" {
-		http.Error(w, "unauthorized", http.StatusUnauthorized)
+		WriteError(w, http.StatusUnauthorized, ErrUnauthorized)
 		return
 	}
-
 	var req WithdrawRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		http.Error(w, "bad request", http.StatusBadRequest)
+		WriteError(w, http.StatusBadRequest, ErrBadRequest)
 		return
 	}
 	if req.Order == "" || req.Sum <= 0 {
-		http.Error(w, "bad request", http.StatusBadRequest)
+		WriteError(w, http.StatusBadRequest, ErrBadRequest)
 		return
 	}
-
 	err := h.BalanceService.WithdrawRequest(r.Context(), userID, req.Order, req.Sum)
 	if err != nil {
 		switch {
 		case errors.Is(err, domain.ErrInsufficientFunds):
-			http.Error(w, "insufficient funds", http.StatusPaymentRequired)
+			WriteError(w, http.StatusPaymentRequired, ErrInsufficientFunds)
 			return
 		case errors.Is(err, service.ErrInvalidOrderNumber):
-			http.Error(w, "invalid order number format", http.StatusUnprocessableEntity)
+			WriteError(w, http.StatusUnprocessableEntity, ErrInvalidOrderNumber)
 			return
 		default:
 			h.Logger.Error().Err(err).Str("user_id", userID).Str("order", req.Order).Float64("sum", req.Sum).Msg("withdraw failed")
-			http.Error(w, "internal error", http.StatusInternalServerError)
+			WriteError(w, http.StatusInternalServerError, ErrInternalServer)
 			return
 		}
 	}
@@ -93,22 +89,19 @@ type WithdrawalResponse struct {
 func (h *BalanceHandler) GetWithdrawals(w http.ResponseWriter, r *http.Request) {
 	userID := middleware.GetUserID(r.Context())
 	if userID == "" {
-		http.Error(w, "unauthorized", http.StatusUnauthorized)
+		WriteError(w, http.StatusUnauthorized, ErrUnauthorized)
 		return
 	}
-
 	withdrawals, err := h.BalanceService.GetWithdrawals(r.Context(), userID)
 	if err != nil {
 		h.Logger.Error().Err(err).Str("user_id", userID).Msg("get withdrawals failed")
-		http.Error(w, "internal error", http.StatusInternalServerError)
+		WriteError(w, http.StatusInternalServerError, ErrInternalServer)
 		return
 	}
-
 	if len(withdrawals) == 0 {
 		w.WriteHeader(http.StatusNoContent)
 		return
 	}
-
 	responses := make([]WithdrawalResponse, len(withdrawals))
 	for i, w := range withdrawals {
 		responses[i] = WithdrawalResponse{
@@ -117,7 +110,6 @@ func (h *BalanceHandler) GetWithdrawals(w http.ResponseWriter, r *http.Request) 
 			ProcessedAt: w.ProcessedAt,
 		}
 	}
-
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(responses)
 }

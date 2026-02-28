@@ -1,0 +1,53 @@
+
+services:
+  gophermart:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    ports:
+      - "8080:8080"
+    environment:
+      - RUN_ADDRESS=:8080
+      - DATABASE_URI=postgresql://postgres:postgres@postgres:5432/praktikum?sslmode=disable
+      - ACCRUAL_SYSTEM_ADDRESS=http://accrual:8080
+      - AUTH_SECRET=your-secret-key-change-in-production
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: unless-stopped
+
+  postgres:
+    image: postgres:15-alpine
+    environment:
+      - POSTGRES_PASSWORD=postgres
+      - POSTGRES_DB=praktikum
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+
+  # Optional: Mock accrual system for local development
+  accrual:
+    image: golang:1.24-alpine
+    command: >
+      sh -c "
+      cd /tmp && 
+      wget -q https://github.com/yandex-praktikum/go-autotests/releases/latest/download/accrual_linux_amd64 -O accrual &&
+      chmod +x accrual &&
+      ./accrual -r=:8080 -d=postgresql://postgres:postgres@postgres:5432/praktikum?sslmode=disable
+      "
+    ports:
+      - "8081:8080"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: unless-stopped
+
+volumes:
+  postgres_data:

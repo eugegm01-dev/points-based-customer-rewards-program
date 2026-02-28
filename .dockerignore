@@ -1,0 +1,8 @@
+.git
+.gitignore
+*.md
+!go.mod
+!go.sum
+bin/
+gophermart.exe
+.tools/
