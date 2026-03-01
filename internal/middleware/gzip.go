@@ -18,8 +18,11 @@ type GzipResponseWriter struct {
 
 // WriteHeader captures the status code and sets Content-Encoding header.
 func (w *GzipResponseWriter) WriteHeader(code int) {
+	if w.code != 0 {
+		return // Header already written
+	}
 	w.code = code
-	if code != http.StatusNoContent {
+	if code != http.StatusNoContent && code != http.StatusNotModified {
 		w.Header().Set("Content-Encoding", "gzip")
 	}
 	w.ResponseWriter.WriteHeader(code)
@@ -27,9 +30,9 @@ func (w *GzipResponseWriter) WriteHeader(code int) {
 
 // Write compresses the response body if status is not 204.
 func (w *GzipResponseWriter) Write(b []byte) (int, error) {
-	if w.code == 0 { // WriteHeader was never called → assume 200 OK
-		w.code = http.StatusOK
-		w.Header().Set("Content-Encoding", "gzip")
+	// Ensure WriteHeader is called first
+	if w.code == 0 {
+		w.WriteHeader(http.StatusOK)
 	}
 	if w.code == http.StatusNoContent {
 		return 0, nil
@@ -39,7 +42,10 @@ func (w *GzipResponseWriter) Write(b []byte) (int, error) {
 
 // Close closes the gzip writer and flushes any remaining data.
 func (w *GzipResponseWriter) Close() error {
-	return w.writer.Close()
+	if w.writer != nil {
+		return w.writer.Close()
+	}
+	return nil
 }
 
 // gzipPool provides a pool of gzip writers to reduce allocations.
