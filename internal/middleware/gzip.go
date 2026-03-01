@@ -58,25 +58,21 @@ var gzipPool = sync.Pool{
 // Gzip middleware compresses HTTP responses when client supports it.
 func Gzip(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		// Check if client accepts gzip encoding
 		if !strings.Contains(r.Header.Get("Accept-Encoding"), "gzip") {
 			next.ServeHTTP(w, r)
 			return
 		}
 
-		// Get gzip writer from pool
 		gz := gzipPool.Get().(*gzip.Writer)
 		defer gzipPool.Put(gz)
-
 		gz.Reset(w)
 		defer gz.Close()
 
 		gzw := &GzipResponseWriter{
 			ResponseWriter: w,
 			writer:         gz,
-			code:           http.StatusOK,
+			code:           0,
 		}
-
 		next.ServeHTTP(gzw, r)
 	})
 }
