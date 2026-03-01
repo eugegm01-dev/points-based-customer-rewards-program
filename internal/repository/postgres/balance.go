@@ -31,8 +31,11 @@ func (r *BalanceRepository) GetOrCreate(ctx context.Context, userID string) (*do
 
 func (r *BalanceRepository) Credit(ctx context.Context, userID string, amount float64) error {
 	_, err := r.db.ExecContext(ctx,
-		`UPDATE balances SET current = current + $1, updated_at = now() WHERE user_id = $2`,
-		amount, userID,
+		`INSERT INTO balances (user_id, current, withdrawn, updated_at)
+                VALUES ($1, $2, 0, now())
+                ON CONFLICT (user_id) DO UPDATE
+                SET current = balances.current + $2, updated_at = now()`,
+		userID, amount,
 	)
 	return err
 }

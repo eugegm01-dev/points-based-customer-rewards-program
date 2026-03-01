@@ -27,6 +27,10 @@ func (w *GzipResponseWriter) WriteHeader(code int) {
 
 // Write compresses the response body if status is not 204.
 func (w *GzipResponseWriter) Write(b []byte) (int, error) {
+	if w.code == 0 { // WriteHeader was never called → assume 200 OK
+		w.code = http.StatusOK
+		w.Header().Set("Content-Encoding", "gzip")
+	}
 	if w.code == http.StatusNoContent {
 		return 0, nil
 	}
