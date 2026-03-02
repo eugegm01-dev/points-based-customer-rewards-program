@@ -17,7 +17,9 @@ func TestClient_GetOrderStatus(t *testing.T) {
 		assert.Equal(t, "/api/orders/123", r.URL.Path)
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusOK)
-		w.Write([]byte(`{"order":"123","status":"PROCESSED","accrual":500}`))
+		if _, err := w.Write([]byte(`{"order":"123","status":"PROCESSED","accrual":500}`)); err != nil {
+			t.Fatal(err)
+		}
 	}))
 	defer ts.Close()
 
@@ -49,7 +51,9 @@ func TestClient_GetOrderStatusWithRetry_SuccessAfterRetries(t *testing.T) {
 			return
 		}
 		w.WriteHeader(http.StatusOK)
-		w.Write([]byte(`{"order":"123","status":"PROCESSED","accrual":500}`))
+		if _, err := w.Write([]byte(`{"order":"123","status":"PROCESSED","accrual":500}`)); err != nil {
+			t.Fatal(err)
+		}
 	}))
 	defer ts.Close()
 

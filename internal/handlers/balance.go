@@ -71,7 +71,8 @@ func (h *BalanceHandler) Withdraw(w http.ResponseWriter, r *http.Request) {
 	if errs := validator.ValidateStruct(req); errs != nil {
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusBadRequest)
-		json.NewEncoder(w).Encode(map[string]interface{}{
+		// ignore encode error
+		_ = json.NewEncoder(w).Encode(map[string]interface{}{
 			"error":  "validation failed",
 			"fields": errs,
 		})
