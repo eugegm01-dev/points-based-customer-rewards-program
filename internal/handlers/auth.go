@@ -1,6 +1,7 @@
 package handlers
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"net/http"
@@ -9,20 +10,26 @@ import (
 	"github.com/eugegm01-dev/points-based-customer-rewards-program.git/internal/domain"
 	"github.com/eugegm01-dev/points-based-customer-rewards-program.git/internal/middleware"
 	"github.com/eugegm01-dev/points-based-customer-rewards-program.git/internal/service"
+	"github.com/eugegm01-dev/points-based-customer-rewards-program.git/internal/validator"
 	"github.com/rs/zerolog"
 )
 
 // AuthHandler holds dependencies for auth endpoints.
+type AuthService interface {
+	Register(ctx context.Context, login, password string) (*domain.User, error)
+	Login(ctx context.Context, login, password string) (*domain.User, error)
+}
+
 type AuthHandler struct {
-	AuthService *service.AuthService
+	AuthService AuthService
 	AuthSecret  string
 	Logger      zerolog.Logger
 }
 
 // RegisterRequest is the JSON body for POST /api/user/register and /api/user/login.
 type RegisterRequest struct {
-	Login    string `json:"login"`
-	Password string `json:"password"`
+	Login    string `json:"login" validate:"required,min=3,max=50"`
+	Password string `json:"password" validate:"required,min=6"`
 }
 
 // Register handles POST /api/user/register. On success sets auth cookie and returns 200.
@@ -32,6 +39,16 @@ func (h *AuthHandler) Register(w http.ResponseWriter, r *http.Request) {
 		WriteError(w, http.StatusBadRequest, ErrBadRequest)
 		return
 	}
+	if errs := validator.ValidateStruct(req); errs != nil {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusBadRequest)
+		json.NewEncoder(w).Encode(map[string]interface{}{
+			"error":  "validation failed",
+			"fields": errs,
+		})
+		return
+	}
+
 	if req.Login == "" || req.Password == "" {
 		WriteError(w, http.StatusBadRequest, ErrBadRequest)
 		return
@@ -63,10 +80,16 @@ func (h *AuthHandler) Login(w http.ResponseWriter, r *http.Request) {
 		WriteError(w, http.StatusBadRequest, ErrBadRequest)
 		return
 	}
-	if req.Login == "" || req.Password == "" {
-		WriteError(w, http.StatusBadRequest, ErrBadRequest)
+	if errs := validator.ValidateStruct(req); errs != nil {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusBadRequest)
+		json.NewEncoder(w).Encode(map[string]interface{}{
+			"error":  "validation failed",
+			"fields": errs,
+		})
 		return
 	}
+
 	u, err := h.AuthService.Login(r.Context(), req.Login, req.Password)
 	if err != nil {
 		if errors.Is(err, service.ErrInvalidCredentials) {

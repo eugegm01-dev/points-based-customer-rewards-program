@@ -34,22 +34,24 @@ func main() {
 	}
 	defer db.Close()
 
+	// Tune connection pool
+	db.SetMaxOpenConns(25)
+	db.SetMaxIdleConns(25)
+	db.SetConnMaxLifetime(5 * time.Minute)
+
 	if err := migrate.Up(db); err != nil {
 		log.Fatal().Err(err).Msg("migrate")
 	}
 	log.Info().Msg("migrations applied")
 
-	// ✅ CREATE ALL REPOSITORIES HERE
 	userRepo := postgres.NewUserRepository(db)
 	orderRepo := postgres.NewOrderRepository(db)
 	balanceRepo := postgres.NewBalanceRepository(db)
 
-	// ✅ CREATE SERVICES
 	authService := service.NewAuthService(userRepo)
 	orderService := service.NewOrderService(orderRepo)
 	balanceService := service.NewBalanceService(balanceRepo, orderRepo)
 
-	// ✅ CREATE ACCRUAL CLIENT & WORKER
 	accrualClient := accrual.NewClient(cfg.AccrualAddress)
 	accrualWorker := service.NewAccrualWorker(orderService, balanceService, accrualClient, log, 10*time.Second)
 

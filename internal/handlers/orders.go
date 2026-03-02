@@ -2,6 +2,7 @@
 package handlers
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"io"
@@ -9,14 +10,20 @@ import (
 	"strings"
 	"time"
 
+	"github.com/eugegm01-dev/points-based-customer-rewards-program.git/internal/domain"
 	"github.com/eugegm01-dev/points-based-customer-rewards-program.git/internal/middleware"
 	"github.com/eugegm01-dev/points-based-customer-rewards-program.git/internal/service"
 	"github.com/rs/zerolog"
 )
 
 // OrderHandler holds dependencies for order endpoints.
+type OrderService interface {
+	UploadOrder(ctx context.Context, userID, number string) error
+	GetOrdersByUserID(ctx context.Context, userID string) ([]*domain.Order, error)
+}
+
 type OrderHandler struct {
-	OrderService *service.OrderService
+	OrderService OrderService
 	Logger       zerolog.Logger
 }
 

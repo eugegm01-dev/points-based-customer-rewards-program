@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"math/rand"
 	"net/http"
 	"strconv"
 	"time"
@@ -84,4 +85,45 @@ func GetRetryAfter(resp *http.Response) time.Duration {
 	}
 	// Parse HTTP date format if needed, defaulting to 1 min for simplicity
 	return time.Minute
+}
+
+const (
+	maxRetries = 5
+	baseDelay  = 100 * time.Millisecond
+	maxDelay   = 10 * time.Second
+)
+
+// GetOrderStatusWithRetry calls GetOrderStatus with exponential backoff on 429.
+func (c *Client) GetOrderStatusWithRetry(ctx context.Context, number string) (*AccrualResponse, error) {
+	var resp *AccrualResponse
+	var err error
+
+	for attempt := 0; attempt < maxRetries; attempt++ {
+		if attempt > 0 {
+			// Exponential backoff with jitter
+			delay := baseDelay * (1 << attempt)
+			if delay > maxDelay {
+				delay = maxDelay
+			}
+			// Add jitter (±25%)
+			jitter := time.Duration(rand.Int63n(int64(delay / 4)))
+			delay = delay - jitter/2 + jitter
+
+			select {
+			case <-ctx.Done():
+				return nil, ctx.Err()
+			case <-time.After(delay):
+			}
+		}
+
+		resp, err = c.GetOrderStatus(ctx, number)
+		if err == nil {
+			return resp, nil
+		}
+		if err != ErrTooManyRequests {
+			return nil, err // non-retryable error
+		}
+		// else retry
+	}
+	return nil, err // last error
 }

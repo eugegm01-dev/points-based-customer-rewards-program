@@ -1,8 +1,3 @@
-// Package config provides application configuration loading from
-// command-line flags and environment variables.
-//
-// Configuration sources are resolved in the following order of precedence
-// (highest first): flags, environment variables, defaults.
 package config
 
 import (
@@ -11,7 +6,22 @@ import (
 	"fmt"
 	"os"
 	"strings"
+	"testing"
 )
+
+var (
+	runAddrFlag     = flag.String("a", "", "Server address and port (e.g. :8080). Overrides RUN_ADDRESS.")
+	dbURIFlag       = flag.String("d", "", "PostgreSQL connection URI. Overrides DATABASE_URI.")
+	accrualAddrFlag = flag.String("r", "", "Accrual system base URL. Overrides ACCRUAL_SYSTEM_ADDRESS.")
+	authSecretFlag  = flag.String("s", "", "Secret for JWT signing. Overrides AUTH_SECRET.")
+)
+
+func init() {
+	// Only parse flags if not in test mode
+	if !testing.Testing() {
+		flag.Parse()
+	}
+}
 
 // Config holds all application configuration.
 type Config struct {
@@ -22,29 +32,22 @@ type Config struct {
 }
 
 const (
-	envRunAddress     = "RUN_ADDRESS"
-	envDatabaseURI    = "DATABASE_URI"
-	envAccrualAddress = "ACCRUAL_SYSTEM_ADDRESS"
-	envAuthSecret     = "AUTH_SECRET"
-	defaultRunAddress = ":8080"
-	// ✅ Add defaults for autotests
+	envRunAddress      = "RUN_ADDRESS"
+	envDatabaseURI     = "DATABASE_URI"
+	envAccrualAddress  = "ACCRUAL_SYSTEM_ADDRESS"
+	envAuthSecret      = "AUTH_SECRET"
+	defaultRunAddress  = ":8080"
 	defaultAuthSecret  = "autotest-secret-key-change-in-production"
 	defaultAccrualAddr = "http://localhost:8080"
 )
 
 // Load parses flags and environment variables, then builds and validates Config.
 func Load() (*Config, error) {
-	runAddr := flag.String("a", "", "Server address and port (e.g. :8080). Overrides RUN_ADDRESS.")
-	dbURI := flag.String("d", "", "PostgreSQL connection URI. Overrides DATABASE_URI.")
-	accrualAddr := flag.String("r", "", "Accrual system base URL. Overrides ACCRUAL_SYSTEM_ADDRESS.")
-	authSecret := flag.String("s", "", "Secret for JWT signing. Overrides AUTH_SECRET.")
-	flag.Parse()
-
 	cfg := &Config{
-		RunAddress:     firstNonEmpty(*runAddr, os.Getenv(envRunAddress), defaultRunAddress),
-		DatabaseURI:    firstNonEmpty(*dbURI, os.Getenv(envDatabaseURI)),
-		AccrualAddress: firstNonEmpty(*accrualAddr, os.Getenv(envAccrualAddress), defaultAccrualAddr),
-		AuthSecret:     firstNonEmpty(*authSecret, os.Getenv(envAuthSecret), defaultAuthSecret),
+		RunAddress:     firstNonEmpty(*runAddrFlag, os.Getenv(envRunAddress), defaultRunAddress),
+		DatabaseURI:    firstNonEmpty(*dbURIFlag, os.Getenv(envDatabaseURI)),
+		AccrualAddress: firstNonEmpty(*accrualAddrFlag, os.Getenv(envAccrualAddress), defaultAccrualAddr),
+		AuthSecret:     firstNonEmpty(*authSecretFlag, os.Getenv(envAuthSecret), defaultAuthSecret),
 	}
 
 	if err := cfg.validate(); err != nil {
@@ -56,7 +59,6 @@ func Load() (*Config, error) {
 // validate checks that required configuration fields are set and well-formed.
 func (c *Config) validate() error {
 	var missing []string
-	// ✅ Only DatabaseURI is truly required - others have defaults
 	if strings.TrimSpace(c.DatabaseURI) == "" {
 		missing = append(missing, fmt.Sprintf("database URI (flag -d or %s)", envDatabaseURI))
 	}

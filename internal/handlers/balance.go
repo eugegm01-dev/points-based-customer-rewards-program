@@ -2,6 +2,7 @@
 package handlers
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"net/http"
@@ -10,11 +11,18 @@ import (
 	"github.com/eugegm01-dev/points-based-customer-rewards-program.git/internal/domain"
 	"github.com/eugegm01-dev/points-based-customer-rewards-program.git/internal/middleware"
 	"github.com/eugegm01-dev/points-based-customer-rewards-program.git/internal/service"
+	"github.com/eugegm01-dev/points-based-customer-rewards-program.git/internal/validator"
 	"github.com/rs/zerolog"
 )
 
+type BalanceService interface {
+	GetBalance(ctx context.Context, userID string) (*domain.Balance, error)
+	WithdrawRequest(ctx context.Context, userID, orderNumber string, sum float64) error
+	GetWithdrawals(ctx context.Context, userID string) ([]*domain.Withdrawal, error)
+}
+
 type BalanceHandler struct {
-	BalanceService *service.BalanceService
+	BalanceService BalanceService
 	Logger         zerolog.Logger
 }
 
@@ -43,8 +51,8 @@ func (h *BalanceHandler) GetBalance(w http.ResponseWriter, r *http.Request) {
 }
 
 type WithdrawRequest struct {
-	Order string  `json:"order"`
-	Sum   float64 `json:"sum"`
+	Order string  `json:"order" validate:"required"`
+	Sum   float64 `json:"sum" validate:"required,gt=0"`
 }
 
 func (h *BalanceHandler) Withdraw(w http.ResponseWriter, r *http.Request) {
@@ -58,6 +66,16 @@ func (h *BalanceHandler) Withdraw(w http.ResponseWriter, r *http.Request) {
 		WriteError(w, http.StatusBadRequest, ErrBadRequest)
 		return
 	}
+	if errs := validator.ValidateStruct(req); errs != nil {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusBadRequest)
+		json.NewEncoder(w).Encode(map[string]interface{}{
+			"error":  "validation failed",
+			"fields": errs,
+		})
+		return
+	}
+
 	if req.Order == "" || req.Sum <= 0 {
 		WriteError(w, http.StatusBadRequest, ErrBadRequest)
 		return

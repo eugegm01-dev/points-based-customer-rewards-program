@@ -77,7 +77,7 @@ func (w *AccrualWorker) processOrders(ctx context.Context) {
 }
 
 func (w *AccrualWorker) checkOrder(ctx context.Context, order *domain.Order) {
-	resp, err := w.accrualClient.GetOrderStatus(ctx, order.Number)
+	resp, err := w.accrualClient.GetOrderStatusWithRetry(ctx, order.Number)
 	if err != nil {
 		if errors.Is(err, accrual.ErrTooManyRequests) {
 			w.logger.Warn().Msg("accrual system rate limit hit, waiting")
