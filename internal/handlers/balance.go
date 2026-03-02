@@ -44,10 +44,12 @@ func (h *BalanceHandler) GetBalance(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(BalanceResponse{
+	if err := json.NewEncoder(w).Encode(BalanceResponse{
 		Current:   balance.Current,
 		Withdrawn: balance.Withdrawn,
-	})
+	}); err != nil {
+		h.Logger.Error().Err(err).Msg("failed to encode balance response")
+	}
 }
 
 type WithdrawRequest struct {
@@ -129,5 +131,7 @@ func (h *BalanceHandler) GetWithdrawals(w http.ResponseWriter, r *http.Request) 
 		}
 	}
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(responses)
+	if err := json.NewEncoder(w).Encode(responses); err != nil {
+		h.Logger.Error().Err(err).Msg("failed to encode withdrawals response")
+	}
 }

@@ -42,10 +42,12 @@ func (h *AuthHandler) Register(w http.ResponseWriter, r *http.Request) {
 	if errs := validator.ValidateStruct(req); errs != nil {
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusBadRequest)
-		json.NewEncoder(w).Encode(map[string]interface{}{
+		if err := json.NewEncoder(w).Encode(map[string]interface{}{
 			"error":  "validation failed",
 			"fields": errs,
-		})
+		}); err != nil {
+			h.Logger.Error().Err(err).Msg("failed to encode error response")
+		}
 		return
 	}
 
@@ -83,13 +85,14 @@ func (h *AuthHandler) Login(w http.ResponseWriter, r *http.Request) {
 	if errs := validator.ValidateStruct(req); errs != nil {
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusBadRequest)
-		json.NewEncoder(w).Encode(map[string]interface{}{
+		if err := json.NewEncoder(w).Encode(map[string]interface{}{
 			"error":  "validation failed",
 			"fields": errs,
-		})
+		}); err != nil {
+			h.Logger.Error().Err(err).Msg("failed to encode error response")
+		}
 		return
 	}
-
 	u, err := h.AuthService.Login(r.Context(), req.Login, req.Password)
 	if err != nil {
 		if errors.Is(err, service.ErrInvalidCredentials) {

@@ -14,7 +14,9 @@ import (
 func TestGzip(t *testing.T) {
 	handler := middleware.Gzip(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "text/plain")
-		w.Write([]byte("hello"))
+		if _, err := w.Write([]byte("hello")); err != nil {
+			t.Fatal(err)
+		}
 	}))
 
 	req := httptest.NewRequest(http.MethodGet, "/", nil)
@@ -37,7 +39,9 @@ func TestGzip(t *testing.T) {
 func TestGzip_NoAcceptEncoding(t *testing.T) {
 	handler := middleware.Gzip(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "text/plain")
-		w.Write([]byte("hello"))
+		if _, err := w.Write([]byte("hello")); err != nil {
+			t.Fatal(err)
+		}
 	}))
 
 	req := httptest.NewRequest(http.MethodGet, "/", nil)

@@ -10,15 +10,14 @@ import (
 	"github.com/testcontainers/testcontainers-go/modules/postgres"
 	"github.com/testcontainers/testcontainers-go/wait"
 
-	"github.com/eugegm01-dev/points-based-customer-rewards-program.git/internal/migrate" // add this
-
+	"github.com/eugegm01-dev/points-based-customer-rewards-program.git/internal/migrate"
 	_ "github.com/jackc/pgx/v5/stdlib"
 )
 
 func setupTestDB(t *testing.T) (*sql.DB, func()) {
 	ctx := context.Background()
-	pgContainer, err := postgres.RunContainer(ctx,
-		testcontainers.WithImage("postgres:15-alpine"),
+	pgContainer, err := postgres.Run(ctx,
+		"postgres:15-alpine",
 		postgres.WithDatabase("testdb"),
 		postgres.WithUsername("test"),
 		postgres.WithPassword("test"),
@@ -47,6 +46,8 @@ func setupTestDB(t *testing.T) (*sql.DB, func()) {
 
 	return db, func() {
 		db.Close()
-		pgContainer.Terminate(ctx)
+		if err := pgContainer.Terminate(ctx); err != nil {
+			t.Logf("failed to terminate container: %v", err)
+		}
 	}
 }
