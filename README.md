@@ -107,4 +107,4 @@ Feel free to open issues or pull requests.
 License
 MIT
 
-03. 01. 2026 
+03. 01. 2026 # Final version
