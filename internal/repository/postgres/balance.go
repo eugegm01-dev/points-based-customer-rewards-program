@@ -114,7 +114,10 @@ func (r *BalanceRepository) CreditOrderTx(ctx context.Context, tx *sql.Tx, order
 	}
 
 	_, err = tx.ExecContext(ctx,
-		`INSERT INTO balances ... ON CONFLICT ...`,
+		`INSERT INTO balances (user_id, current, withdrawn, updated_at)
+     VALUES ($1, $2, 0, now())
+     ON CONFLICT (user_id) DO UPDATE
+     SET current = balances.current + $2, updated_at = now()`,
 		userID, accrual)
 	return err
 }
