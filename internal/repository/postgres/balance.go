@@ -45,13 +45,13 @@ func (r *BalanceRepository) Withdraw(ctx context.Context, userID string, orderNu
 	if err != nil {
 		return nil, err
 	}
-	defer tx.Rollback()
+	defer tx.Rollback() //nolint:errcheck
 
 	// UPDATE balances
 	result, err := tx.ExecContext(ctx,
 		`UPDATE balances
-         SET current = current - $1, withdrawn = withdrawn + $1, updated_at = now()
-         WHERE user_id = $2 AND current >= $1`,
+     SET current = current - $1, withdrawn = withdrawn + $1, updated_at = now()
+     WHERE user_id = $2 AND current >= $1`,
 		sum, userID,
 	)
 	if err != nil {
@@ -125,7 +125,7 @@ func (r *BalanceRepository) WithTransaction(ctx context.Context, fn func(*sql.Tx
 	if err != nil {
 		return err
 	}
-	defer tx.Rollback()
+	defer tx.Rollback() //nolint:errcheck
 	if err := fn(tx); err != nil {
 		return err
 	}
