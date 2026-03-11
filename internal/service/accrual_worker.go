@@ -3,6 +3,8 @@ package service
 import (
 	"context"
 	"errors"
+	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/eugegm01-dev/points-based-customer-rewards-program.git/internal/accrual"
@@ -17,6 +19,8 @@ type AccrualWorker struct {
 	accrualClient  *accrual.Client
 	logger         zerolog.Logger
 	interval       time.Duration
+	cooldownUntil  atomic.Value // time.Time
+	cooldownMu     sync.RWMutex
 }
 
 // NewAccrualWorker creates a new worker.
@@ -40,7 +44,6 @@ func NewAccrualWorker(
 func (w *AccrualWorker) Run(ctx context.Context) {
 	ticker := time.NewTicker(w.interval)
 	defer ticker.Stop()
-
 	w.logger.Info().Msg("accrual worker started")
 
 	for {
@@ -55,56 +58,97 @@ func (w *AccrualWorker) Run(ctx context.Context) {
 }
 
 func (w *AccrualWorker) processOrders(ctx context.Context) {
-	// Process NEW orders first
-	newOrders, err := w.orderService.GetNewOrders(ctx)
+	orders, err := w.getAllPendingOrders(ctx) // NEW + PROCESSING
 	if err != nil {
-		w.logger.Error().Err(err).Msg("failed to get new orders")
 		return
 	}
-	for _, order := range newOrders {
-		w.checkOrder(ctx, order)
+	if len(orders) == 0 {
+		return
 	}
 
-	// Process PROCESSING orders
-	processingOrders, err := w.orderService.GetProcessingOrders(ctx)
-	if err != nil {
-		w.logger.Error().Err(err).Msg("failed to get processing orders")
-		return
+	const workerCount = 5 // настраиваемый параметр
+	jobs := make(chan *domain.Order, len(orders))
+	var wg sync.WaitGroup
+
+	// Запуск воркеров
+	for i := 0; i < workerCount; i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			for order := range jobs {
+				w.checkOrder(ctx, order)
+			}
+		}()
 	}
-	for _, order := range processingOrders {
-		w.checkOrder(ctx, order)
+
+	// Отправка задач
+	for _, order := range orders {
+		select {
+		case jobs <- order:
+		case <-ctx.Done():
+			close(jobs)
+			wg.Wait()
+			return
+		}
 	}
+	close(jobs)
+	wg.Wait()
 }
 
-func (w *AccrualWorker) checkOrder(ctx context.Context, order *domain.Order) {
-	resp, err := w.accrualClient.GetOrderStatusWithRetry(ctx, order.Number)
+// getAllPendingOrders собирает заказы со статусами NEW и PROCESSING.
+func (w *AccrualWorker) getAllPendingOrders(ctx context.Context) ([]*domain.Order, error) {
+	newOrders, err := w.orderService.GetNewOrders(ctx)
 	if err != nil {
-		if errors.Is(err, accrual.ErrTooManyRequests) {
-			w.logger.Warn().Msg("accrual system rate limit hit, waiting")
-			time.Sleep(time.Minute) // Simple backoff
+		return nil, err
+	}
+	processingOrders, err := w.orderService.GetProcessingOrders(ctx)
+	if err != nil {
+		return nil, err
+	}
+	return append(newOrders, processingOrders...), nil
+}
+
+// checkOrder проверяет статус заказа в accrual системе.
+func (w *AccrualWorker) checkOrder(ctx context.Context, order *domain.Order) {
+	// ✅ Проверка глобального кулдауна
+	if until, ok := w.cooldownUntil.Load().(time.Time); ok {
+		if w.waitIfCooldown(ctx) {
+			return // graceful shutdown
+		}
+		if sleep := time.Until(until); sleep > 0 {
+			select {
+			case <-time.After(sleep): // ✅ прерываемый сон
+			case <-ctx.Done(): // ✅ graceful shutdown
+				return
+			}
+		}
+	}
+
+	// ✅ 2. Запрос к accrual (ретраи уже внутри клиента)
+	resp, err := w.accrualClient.GetOrderStatus(ctx, order.Number)
+
+	// ✅ 3. Обработка ошибок
+	if err != nil {
+		var rlErr *accrual.RateLimitError
+		if errors.As(err, &rlErr) {
+			w.setGlobalCooldown(rlErr.RetryAfter) // ✅ используем реальное значение
 			return
 		}
 		w.logger.Error().Err(err).Str("order", order.Number).Msg("failed to get accrual status")
 		return
 	}
 
+	// ✅ 4. Обработка 204 No Content
 	if resp == nil {
-		// 204 No Content - order not yet registered in accrual system
-		// Keep status as NEW or PROCESSING depending on initial state
-		// If it was NEW, we might want to move it to PROCESSING to indicate we are trying
 		if order.Status == domain.OrderStatusNew {
-			err = w.orderService.UpdateOrderStatus(ctx, order.ID, domain.OrderStatusProcessing, nil)
-			if err != nil {
-				w.logger.Error().Err(err).Str("order", order.Number).Msg("failed to update order status to PROCESSING")
-			}
+			_ = w.orderService.UpdateOrderStatus(ctx, order.ID, domain.OrderStatusProcessing, nil)
 		}
 		return
 	}
 
-	// Map accrual status to internal status
+	// ✅ 5. Маппинг статусов
 	var newStatus domain.OrderStatus
 	var accrualAmount *float64
-
 	switch resp.Status {
 	case "REGISTERED", "PROCESSING":
 		newStatus = domain.OrderStatusProcessing
@@ -118,21 +162,41 @@ func (w *AccrualWorker) checkOrder(ctx context.Context, order *domain.Order) {
 		return
 	}
 
-	// Update order status
-	err = w.orderService.UpdateOrderStatus(ctx, order.ID, newStatus, accrualAmount)
-	if err != nil {
-		w.logger.Error().Err(err).Str("order", order.Number).Msg("failed to update order status")
-		return
-	}
+	// ✅ 6. Обновление статуса заказа
+	_ = w.orderService.UpdateOrderStatus(ctx, order.ID, newStatus, accrualAmount)
 
-	// If processed, credit balance
+	// ✅ 7. Кредитование баланса (в транзакции)
 	if newStatus == domain.OrderStatusProcessed && accrualAmount != nil {
-		err = w.balanceService.CreditOrder(ctx, order.Number, *accrualAmount)
-		if err != nil {
+		if err := w.balanceService.CreditOrder(ctx, order.Number, *accrualAmount); err != nil {
 			w.logger.Error().Err(err).Str("order", order.Number).Float64("accrual", *accrualAmount).Msg("failed to credit balance")
-			// Note: This is critical. In production, you'd want a retry mechanism or transactional integrity here.
 		} else {
 			w.logger.Info().Str("order", order.Number).Float64("accrual", *accrualAmount).Msg("balance credited")
 		}
 	}
+}
+
+// ✅ Вспомогательный метод: ожидание кулдауна с поддержкой graceful shutdown
+func (w *AccrualWorker) waitIfCooldown(ctx context.Context) bool {
+	if until, ok := w.cooldownUntil.Load().(time.Time); ok {
+		if sleep := time.Until(until); sleep > 0 {
+			w.logger.Debug().Dur("sleep", sleep).Msg("waiting due to global cooldown")
+			select {
+			case <-time.After(sleep):
+				// продолжаем работу
+			case <-ctx.Done():
+				w.logger.Info().Msg("worker stopped during cooldown")
+				return true // сигнал о завершении
+			}
+		}
+	}
+	return false
+}
+
+// setGlobalCooldown устанавливает глобальный кулдаун для всех воркеров.
+func (w *AccrualWorker) setGlobalCooldown(duration time.Duration) {
+	w.cooldownMu.Lock()
+	defer w.cooldownMu.Unlock()
+	until := time.Now().Add(duration)
+	w.cooldownUntil.Store(until)
+	w.logger.Warn().Time("until", until).Msg("global cooldown set")
 }

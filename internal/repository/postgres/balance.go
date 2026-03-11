@@ -16,36 +16,42 @@ type BalanceRepository struct {
 func NewBalanceRepository(db *sql.DB) *BalanceRepository {
 	return &BalanceRepository{db: db}
 }
-
 func (r *BalanceRepository) GetOrCreate(ctx context.Context, userID string) (*domain.Balance, error) {
-	b := &domain.Balance{}
-	err := r.db.QueryRowContext(ctx,
-		`INSERT INTO balances (user_id, current, withdrawn, updated_at)
-		VALUES ($1, 0, 0, now())
-		ON CONFLICT (user_id) DO UPDATE SET updated_at = now()
-		RETURNING user_id, current, withdrawn, updated_at`,
-		userID,
-	).Scan(&b.UserID, &b.Current, &b.Withdrawn, &b.UpdatedAt)
+	b, err := WithRetry(ctx, 3, 100*time.Millisecond, func() (*domain.Balance, error) {
+		var bal domain.Balance
+		err := r.db.QueryRowContext(ctx,
+			`INSERT INTO balances (user_id, current, withdrawn, updated_at) VALUES ($1, 0, 0, now()) ON CONFLICT (user_id) DO UPDATE SET updated_at = now() RETURNING user_id, current, withdrawn, updated_at`,
+			userID,
+		).Scan(&bal.UserID, &bal.Current, &bal.Withdrawn, &bal.UpdatedAt)
+		return &bal, err
+	})
 	return b, err
 }
 
 func (r *BalanceRepository) Credit(ctx context.Context, userID string, amount float64) error {
-	_, err := r.db.ExecContext(ctx,
-		`INSERT INTO balances (user_id, current, withdrawn, updated_at)
+	_, err := WithRetry(ctx, 3, 100*time.Millisecond, func() (sql.Result, error) {
+		return r.db.ExecContext(ctx,
+			`INSERT INTO balances (user_id, current, withdrawn, updated_at)
                 VALUES ($1, $2, 0, now())
                 ON CONFLICT (user_id) DO UPDATE
                 SET current = balances.current + $2, updated_at = now()`,
-		userID, amount,
-	)
+			userID, amount)
+	})
 	return err
 }
 
 func (r *BalanceRepository) Withdraw(ctx context.Context, userID string, orderNumber string, sum float64) (*domain.Withdrawal, error) {
-	// Atomic withdrawal: only succeed if current >= sum
-	result, err := r.db.ExecContext(ctx,
-		`UPDATE balances 
-		SET current = current - $1, withdrawn = withdrawn + $1, updated_at = now()
-		WHERE user_id = $2 AND current >= $1`,
+	tx, err := r.db.BeginTx(ctx, nil)
+	if err != nil {
+		return nil, err
+	}
+	defer tx.Rollback()
+
+	// UPDATE balances
+	result, err := tx.ExecContext(ctx,
+		`UPDATE balances
+         SET current = current - $1, withdrawn = withdrawn + $1, updated_at = now()
+         WHERE user_id = $2 AND current >= $1`,
 		sum, userID,
 	)
 	if err != nil {
@@ -55,38 +61,73 @@ func (r *BalanceRepository) Withdraw(ctx context.Context, userID string, orderNu
 		return nil, domain.ErrInsufficientFunds
 	}
 
+	// INSERT INTO withdrawals
 	w := &domain.Withdrawal{
 		UserID:      userID,
 		OrderNumber: orderNumber,
 		Sum:         sum,
 		ProcessedAt: time.Now(),
 	}
-	err = r.db.QueryRowContext(ctx,
+	err = tx.QueryRowContext(ctx,
 		`INSERT INTO withdrawals (user_id, order_number, sum, processed_at)
-		VALUES ($1, $2, $3, $4) RETURNING id`,
+         VALUES ($1, $2, $3, $4) RETURNING id`,
 		w.UserID, w.OrderNumber, w.Sum, w.ProcessedAt,
 	).Scan(&w.ID)
-	return w, err
-}
-
-func (r *BalanceRepository) GetWithdrawals(ctx context.Context, userID string) ([]*domain.Withdrawal, error) {
-	rows, err := r.db.QueryContext(ctx,
-		`SELECT id, user_id, order_number, sum, processed_at 
-		FROM withdrawals WHERE user_id = $1 ORDER BY processed_at DESC`,
-		userID,
-	)
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
 
-	var ws []*domain.Withdrawal
-	for rows.Next() {
-		w := &domain.Withdrawal{}
-		if err := rows.Scan(&w.ID, &w.UserID, &w.OrderNumber, &w.Sum, &w.ProcessedAt); err != nil {
+	return w, tx.Commit()
+}
+
+func (r *BalanceRepository) GetWithdrawals(ctx context.Context, userID string) ([]*domain.Withdrawal, error) {
+	withdrawals, err := WithRetry(ctx, 3, 100*time.Millisecond, func() ([]*domain.Withdrawal, error) {
+		rows, err := r.db.QueryContext(ctx,
+			`SELECT id, user_id, order_number, sum, processed_at FROM withdrawals WHERE user_id = $1 ORDER BY processed_at DESC`,
+			userID,
+		)
+		if err != nil {
 			return nil, err
 		}
-		ws = append(ws, w)
+		defer rows.Close()
+		var ws []*domain.Withdrawal
+		for rows.Next() {
+			var w domain.Withdrawal
+			if err := rows.Scan(&w.ID, &w.UserID, &w.OrderNumber, &w.Sum, &w.ProcessedAt); err != nil {
+				return nil, err
+			}
+			ws = append(ws, &w)
+		}
+		return ws, rows.Err()
+	})
+	return withdrawals, err
+}
+
+// CreditOrderTx credits balance within a transaction.
+func (r *BalanceRepository) CreditOrderTx(ctx context.Context, tx *sql.Tx, orderNumber string, accrual float64) error {
+	var userID string
+	err := tx.QueryRowContext(ctx,
+		"SELECT user_id FROM orders WHERE number = $1 FOR UPDATE",
+		orderNumber).Scan(&userID)
+	if err != nil {
+		return err
 	}
-	return ws, rows.Err()
+
+	_, err = tx.ExecContext(ctx,
+		`INSERT INTO balances ... ON CONFLICT ...`,
+		userID, accrual)
+	return err
+}
+
+// WithTransaction executes fn within a database transaction.
+func (r *BalanceRepository) WithTransaction(ctx context.Context, fn func(*sql.Tx) error) error {
+	tx, err := r.db.BeginTx(ctx, nil)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+	if err := fn(tx); err != nil {
+		return err
+	}
+	return tx.Commit()
 }

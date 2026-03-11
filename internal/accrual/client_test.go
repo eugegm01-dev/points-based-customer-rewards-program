@@ -58,7 +58,7 @@ func TestClient_GetOrderStatusWithRetry_SuccessAfterRetries(t *testing.T) {
 	defer ts.Close()
 
 	client := accrual.NewClient(ts.URL)
-	resp, err := client.GetOrderStatusWithRetry(context.Background(), "123")
+	resp, err := client.GetOrderStatus(context.Background(), "123")
 	require.NoError(t, err)
 	assert.Equal(t, "123", resp.Order)
 	assert.Equal(t, "PROCESSED", resp.Status)
@@ -75,7 +75,7 @@ func TestClient_GetOrderStatusWithRetry_ContextCancel(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel() // cancel immediately
 	client := accrual.NewClient(ts.URL)
-	_, err := client.GetOrderStatusWithRetry(ctx, "123")
+	_, err := client.GetOrderStatus(ctx, "123")
 	assert.ErrorIs(t, err, context.Canceled)
 }
 
@@ -86,7 +86,7 @@ func TestClient_GetOrderStatusWithRetry_NonRetryableError(t *testing.T) {
 	defer ts.Close()
 
 	client := accrual.NewClient(ts.URL)
-	_, err := client.GetOrderStatusWithRetry(context.Background(), "123")
+	_, err := client.GetOrderStatus(context.Background(), "123")
 	assert.Error(t, err) // should not be retried, returns immediately
 }
 func TestGetRetryAfter(t *testing.T) {
