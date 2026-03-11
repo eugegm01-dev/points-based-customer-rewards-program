@@ -6,7 +6,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"math/rand"
 	"net/http"
 	"strconv"
 	"time"
@@ -28,6 +27,13 @@ type Client struct {
 	httpClient *http.Client
 }
 
+// RateLimitError includes Retry-After duration from 429 response.
+type RateLimitError struct {
+	RetryAfter time.Duration
+}
+
+func (e *RateLimitError) Error() string { return "rate limit exceeded" }
+
 // NewClient creates a new AccrualClient.
 func NewClient(baseURL string) *Client {
 	return &Client{
@@ -38,9 +44,8 @@ func NewClient(baseURL string) *Client {
 	}
 }
 
-// GetOrderStatus fetches the status of an order from the accrual system.
-// It handles 429 Too Many Requests by returning ErrTooManyRequests.
-func (c *Client) GetOrderStatus(ctx context.Context, number string) (*AccrualResponse, error) {
+// doRequest makes a single HTTP request to accrual system (no retries).
+func (c *Client) doRequest(ctx context.Context, number string) (*AccrualResponse, error) {
 	url := fmt.Sprintf("%s/api/orders/%s", c.baseURL, number)
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
 	if err != nil {
@@ -62,10 +67,10 @@ func (c *Client) GetOrderStatus(ctx context.Context, number string) (*AccrualRes
 		}
 		return &accrual, nil
 	case http.StatusNoContent:
-		// Order not registered in accrual system yet
 		return nil, nil
 	case http.StatusTooManyRequests:
-		return nil, ErrTooManyRequests
+		retryAfter := GetRetryAfter(resp) // ✅ извлекаем из хедера
+		return nil, &RateLimitError{RetryAfter: retryAfter}
 	default:
 		return nil, fmt.Errorf("unexpected status code: %d", resp.StatusCode)
 	}
@@ -83,7 +88,6 @@ func GetRetryAfter(resp *http.Response) time.Duration {
 	if seconds, err := strconv.Atoi(retry); err == nil {
 		return time.Duration(seconds) * time.Second
 	}
-	// Parse HTTP date format if needed, defaulting to 1 min for simplicity
 	return time.Minute
 }
 
@@ -93,22 +97,17 @@ const (
 	maxDelay   = 10 * time.Second
 )
 
-// GetOrderStatusWithRetry calls GetOrderStatus with exponential backoff on 429.
-func (c *Client) GetOrderStatusWithRetry(ctx context.Context, number string) (*AccrualResponse, error) {
-	var resp *AccrualResponse
-	var err error
-
+// GetOrderStatus calls accrual system with transparent retries on 429.
+// This is the PUBLIC method — callers don't know about retries.
+func (c *Client) GetOrderStatus(ctx context.Context, number string) (*AccrualResponse, error) {
+	var lastErr error
 	for attempt := 0; attempt < maxRetries; attempt++ {
 		if attempt > 0 {
-			// Exponential backoff with jitter
+			// Экспоненциальный бэк-офф с джиттером
 			delay := baseDelay * (1 << attempt)
 			if delay > maxDelay {
 				delay = maxDelay
 			}
-			// Add jitter (±25%)
-			jitter := time.Duration(rand.Int63n(int64(delay / 4)))
-			delay = delay - jitter/2 + jitter
-
 			select {
 			case <-ctx.Done():
 				return nil, ctx.Err()
@@ -116,14 +115,30 @@ func (c *Client) GetOrderStatusWithRetry(ctx context.Context, number string) (*A
 			}
 		}
 
-		resp, err = c.GetOrderStatus(ctx, number)
+		resp, err := c.doRequest(ctx, number) // приватный метод без ретраев
 		if err == nil {
 			return resp, nil
 		}
-		if err != ErrTooManyRequests {
-			return nil, err // non-retryable error
+
+		// Ретраим только на 429
+		var rlErr *RateLimitError
+		if errors.As(err, &rlErr) {
+			delay := rlErr.RetryAfter
+			if delay == 0 {
+				delay = baseDelay * (1 << attempt)
+				if delay > maxDelay {
+					delay = maxDelay
+				}
+			}
+			select {
+			case <-ctx.Done():
+				return nil, ctx.Err()
+			case <-time.After(delay):
+			}
+			continue
 		}
-		// else retry
+
+		lastErr = err
 	}
-	return nil, err // last error
+	return nil, lastErr
 }

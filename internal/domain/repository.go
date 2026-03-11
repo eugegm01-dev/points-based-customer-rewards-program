@@ -30,6 +30,12 @@ type OrderRepository interface {
 	// GetNewOrders fetches orders with NEW status for background worker.
 	GetNewOrders(ctx context.Context) ([]*Order, error)
 }
+type BalanceRepository interface {
+	GetOrCreate(ctx context.Context, userID string) (*Balance, error)
+	Credit(ctx context.Context, userID string, amount float64) error
+	Withdraw(ctx context.Context, userID string, orderNumber string, sum float64) (*Withdrawal, error)
+	GetWithdrawals(ctx context.Context, userID string) ([]*Withdrawal, error)
+}
 
 // Sentinel errors for repository operations.
 // Callers can use errors.Is(err, domain.ErrXXX) to handle specific cases.

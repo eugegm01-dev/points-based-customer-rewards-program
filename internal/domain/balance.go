@@ -2,7 +2,6 @@
 package domain
 
 import (
-	"context"
 	"errors"
 	"time"
 )
@@ -22,14 +21,6 @@ type Withdrawal struct {
 	OrderNumber string
 	Sum         float64
 	ProcessedAt time.Time
-}
-
-// BalanceRepository defines operations for balance persistence.
-type BalanceRepository interface {
-	GetOrCreate(ctx context.Context, userID string) (*Balance, error)
-	Credit(ctx context.Context, userID string, amount float64) error
-	Withdraw(ctx context.Context, userID string, orderNumber string, sum float64) (*Withdrawal, error)
-	GetWithdrawals(ctx context.Context, userID string) ([]*Withdrawal, error)
 }
 
 // Sentinel errors for balance operations.

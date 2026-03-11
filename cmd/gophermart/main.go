@@ -4,7 +4,6 @@ import (
 	"context"
 	"database/sql"
 	"net/http"
-	"os"
 	"os/signal"
 	"syscall"
 	"time"
@@ -34,7 +33,6 @@ func main() {
 	}
 	defer db.Close()
 
-	// Tune connection pool
 	db.SetMaxOpenConns(25)
 	db.SetMaxIdleConns(25)
 	db.SetConnMaxLifetime(5 * time.Minute)
@@ -53,7 +51,9 @@ func main() {
 	balanceService := service.NewBalanceService(balanceRepo, orderRepo)
 
 	accrualClient := accrual.NewClient(cfg.AccrualAddress)
-	accrualWorker := service.NewAccrualWorker(orderService, balanceService, accrualClient, log, 10*time.Second)
+
+	// Создаём пул воркеров (например, 5)
+	workerPool := service.NewWorkerPool(5, orderService, balanceService, accrualClient, log)
 
 	deps := &server.Dependencies{
 		UserRepo:    userRepo,
@@ -68,9 +68,11 @@ func main() {
 		Handler: server.NewRouter(log, deps),
 	}
 
-	// ✅ START WORKER
-	ctx, cancel := context.WithCancel(context.Background())
-	go accrualWorker.Run(ctx)
+	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
+	defer stop()
+
+	// Запускаем пул
+	workerPool.Start(ctx)
 
 	go func() {
 		log.Info().Str("addr", cfg.RunAddress).Msg("server starting")
@@ -79,19 +81,15 @@ func main() {
 		}
 	}()
 
-	sigChan := make(chan os.Signal, 1)
-	signal.Notify(sigChan, syscall.SIGINT, syscall.SIGTERM)
-	<-sigChan
-
+	<-ctx.Done()
 	log.Info().Msg("shutting down...")
 
-	// ✅ STOP WORKER
-	cancel()
+	// Останавливаем пул (он завершит все горутины по сигналу ctx.Done)
+	workerPool.Stop()
 
-	ctxShutdown, cancelShutdown := context.WithTimeout(context.Background(), shutdownTimeout)
-	defer cancelShutdown()
-
-	if err := srv.Shutdown(ctxShutdown); err != nil {
+	shutdownCtx, cancel := context.WithTimeout(context.Background(), shutdownTimeout)
+	defer cancel()
+	if err := srv.Shutdown(shutdownCtx); err != nil {
 		log.Error().Err(err).Msg("server shutdown")
 	}
 	log.Info().Msg("shutdown complete")
